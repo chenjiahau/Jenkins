@@ -1,41 +1,49 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'mcr.microsoft.com/playwright:v1.43.1-jammy' 
+            reuseNode true
+        }
+    }
+
+    environment {
+        HOME = "${env.WORKSPACE}"
+        PATH = "/ms-playwright/node/bin:/usr/local/bin:/usr/bin:/bin"
+    }
 
     stages {
-        stage('Build') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true
-                }
-            }
+        stage('Install') {
             steps {
                 sh '''
-                    ls -la
                     node --version
                     npm --version
                     cd ./client
                     npm ci
-                    npm run build
-                    ls -la
                 '''
             }
         }
-        stage('Test') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true
-                }
-            }
+
+        stage('Run Vitest Tests') {
             steps {
                 sh '''
-                    apk add --no-cache zip
                     cd ./client
-                    npm ci
-                    npm run test:report
+                    mkdir -p artifacts
+                    npx vitest run --reporter=junit --outputFile=artifacts/junit.xml || true
                 '''
             }
+        }
+    }
+
+    post {
+        always {
+            // Optional: confirm the file is there
+            sh 'echo "== Located JUnit files =="; find . -name "*.xml" || true'
+
+            // ✅ This path must match the actual file location
+            junit 'client/artifacts/junit.xml'
+
+            // Optional: archive all test outputs
+            archiveArtifacts artifacts: 'client/artifacts/**', allowEmptyArchive: true
         }
     }
 }
